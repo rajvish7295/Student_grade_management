@@ -60,13 +60,13 @@ Exporting Data:
 
 Click "Export Data" to save all records as CSV
 
-Database Schema
-The application uses SQLite with the following structure:
+
 
 Diagram
 Code
 
-(https://github.com/user-attachments/assets/d9e3a65b-2bc0-4421-9dd3-1e2e14666f00)
+![deepseek_mermaid_20250516_4d9d08](https://github.com/user-attachments/assets/176143ee-10bb-4fc6-9aa4-2e9a40db0ee3)
+
 
 
 
