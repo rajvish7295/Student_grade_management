@@ -1,0 +1,474 @@
+import json
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+from PIL import Image, ImageTk
+import os
+
+
+class GradeManager:
+    def __init__(self, data_file="student_grades.json"):
+        self.data_file = data_file
+        self.student_grades = self.load_data()
+
+    def load_data(self):
+        
+        try:
+            with open(self.data_file, "r") as file:
+                return json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def save_data(self):
+        
+        with open(self.data_file, "w") as file:
+            json.dump(self.student_grades, file, indent=4)
+
+    def add_student(self, name, subjects):
+       
+        if name in self.student_grades:
+            return False, "Student already exists!"
+        self.student_grades[name] = subjects
+        self.save_data()
+        return True, f"{name} added successfully!"
+
+    def get_student(self, name):
+      
+        return self.student_grades.get(name, None)
+
+    def delete_student(self, name):
+       
+        if name in self.student_grades:
+            del self.student_grades[name]
+            self.save_data()
+            return True, f"{name} deleted successfully!"
+        return False, "Student not found!"
+
+    def calculate_averages(self):
+        
+        averages = {}
+        for name, subs in self.student_grades.items():
+            if subs:  # Only calculate if there are subjects
+                averages[name] = sum(grade for _, grade in subs) / len(subs)
+            else:
+                averages[name] = 0.0  # Or you could use None or "N/A"
+        return averages
+
+    def get_class_stats(self):
+        
+        all_grades = [grade for subs in self.student_grades.values()
+                      for _, grade in subs]
+
+        if not all_grades:  # If no grades exist
+            return None
+
+        return {
+            'highest': max(all_grades),
+            'lowest': min(all_grades),
+            'average': sum(all_grades) / len(all_grades)
+        }
+
+
+class GradeManagerApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Advanced Student Grade Manager")
+        self.root.geometry("1000x700")
+        self.root.minsize(800, 600)
+
+      
+        self.grade_manager = GradeManager()
+
+       
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.style.configure('TFrame', background='#f0f0f0')
+        self.style.configure('TLabel', background='#f0f0f0', font=('Helvetica', 10))
+        self.style.configure('Header.TLabel', font=('Helvetica', 12, 'bold'))
+        self.style.configure('TButton', font=('Helvetica', 10), padding=5)
+        self.style.configure('Accent.TButton', background='#4CAF50', foreground='white')
+
+        
+        self.create_header()
+        self.create_main_panel()
+        self.create_footer()
+
+        
+        self.refresh_student_list()
+
+    def create_header(self):
+        
+        header_frame = ttk.Frame(self.root, style='TFrame')
+        header_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        
+        try:
+            img = Image.open("logo.png").resize((50, 50))
+            self.logo = ImageTk.PhotoImage(img)
+            logo_label = ttk.Label(header_frame, image=self.logo)
+            logo_label.pack(side=tk.LEFT, padx=10)
+        except:
+            logo_label = ttk.Label(header_frame, text="📊", font=('Helvetica', 24))
+            logo_label.pack(side=tk.LEFT, padx=10)
+
+        # Title
+        title_label = ttk.Label(header_frame, text="Student Grade Manager",
+                                style='Header.TLabel')
+        title_label.pack(side=tk.LEFT, padx=10)
+
+       
+        search_frame = ttk.Frame(header_frame)
+        search_frame.pack(side=tk.RIGHT, padx=10)
+
+        self.search_var = tk.StringVar()
+        search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=30)
+        search_entry.pack(side=tk.LEFT, padx=5)
+        search_entry.bind('<Return>', lambda e: self.search_student())
+
+        search_btn = ttk.Button(search_frame, text="Search",
+                                command=self.search_student)
+        search_btn.pack(side=tk.LEFT)
+
+    def create_main_panel(self):
+       
+        main_frame = ttk.Frame(self.root, style='TFrame')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+       
+        left_panel = ttk.Frame(main_frame)
+        left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
+
+        ttk.Label(left_panel, text="Students", style='Header.TLabel').pack()
+
+        self.student_list = ttk.Treeview(left_panel, columns=('average'),
+                                         selectmode='browse', height=20)
+        self.student_list.heading('#0', text='Name')
+        self.student_list.heading('average', text='Average')
+        self.student_list.column('#0', width=200)
+        self.student_list.column('average', width=80, anchor='center')
+        self.student_list.pack(fill=tk.Y)
+
+        self.student_list.bind('<<TreeviewSelect>>', self.on_student_select)
+
+       
+        right_panel = ttk.Frame(main_frame)
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+      
+        details_frame = ttk.LabelFrame(right_panel, text="Student Details")
+        details_frame.pack(fill=tk.BOTH, expand=True)
+
+     
+        name_frame = ttk.Frame(details_frame)
+        name_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Label(name_frame, text="Name:").pack(side=tk.LEFT)
+        self.name_var = tk.StringVar()
+       
+        name_entry = ttk.Entry(name_frame, textvariable=self.name_var, state='readonly')
+
+       
+        self.name_entry = ttk.Entry(name_frame, textvariable=self.name_var, state='readonly')
+        self.name_entry.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=5)
+
+        self.edit_btn = ttk.Button(name_frame, text="Edit", command=self.toggle_edit)
+        self.edit_btn.pack(side=tk.LEFT, padx=2)
+
+        self.delete_btn = ttk.Button(name_frame, text="Delete",
+                                     command=self.delete_current_student)
+        self.delete_btn.pack(side=tk.LEFT, padx=2)
+
+       
+        self.subjects_table = ttk.Treeview(details_frame, columns=('grade'),
+                                           selectmode='browse')
+        self.subjects_table.heading('#0', text='Subject')
+        self.subjects_table.heading('grade', text='Grade')
+        self.subjects_table.column('#0', width=200)
+        self.subjects_table.column('grade', width=80, anchor='center')
+        self.subjects_table.pack(fill=tk.BOTH, expand=True)
+
+       
+        add_frame = ttk.Frame(details_frame)
+        add_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Label(add_frame, text="Subject:").pack(side=tk.LEFT)
+        self.new_subject_var = tk.StringVar()
+        subject_entry = ttk.Entry(add_frame, textvariable=self.new_subject_var, width=20)
+        subject_entry.pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(add_frame, text="Grade:").pack(side=tk.LEFT)
+        self.new_grade_var = tk.DoubleVar()
+        grade_entry = ttk.Entry(add_frame, textvariable=self.new_grade_var, width=5)
+        grade_entry.pack(side=tk.LEFT, padx=5)
+
+        add_btn = ttk.Button(add_frame, text="Add Subject",
+                             command=self.add_subject)
+        add_btn.pack(side=tk.LEFT)
+
+        
+        stats_frame = ttk.LabelFrame(right_panel, text="Class Statistics")
+        stats_frame.pack(fill=tk.X, pady=5)
+
+        stats_labels = ['highest', 'lowest', 'average']
+        for stat in stats_labels:
+            frame = ttk.Frame(stats_frame)
+            frame.pack(fill=tk.X, pady=2)
+
+            ttk.Label(frame, text=f"{stat.capitalize()}:").pack(side=tk.LEFT)
+            setattr(self, f"{stat}_var", tk.StringVar())
+            ttk.Label(frame, textvariable=getattr(self, f"{stat}_var")).pack(side=tk.RIGHT)
+
+    def create_footer(self):
+      
+        footer_frame = ttk.Frame(self.root, style='TFrame')
+        footer_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        add_btn = ttk.Button(footer_frame, text="Add New Student",
+                             style='Accent.TButton', command=self.add_new_student)
+        add_btn.pack(side=tk.LEFT, padx=5)
+
+        export_btn = ttk.Button(footer_frame, text="Export Data",
+                                command=self.export_data)
+        export_btn.pack(side=tk.LEFT, padx=5)
+
+        refresh_btn = ttk.Button(footer_frame, text="Refresh",
+                                 command=self.refresh_student_list)
+        refresh_btn.pack(side=tk.RIGHT, padx=5)
+
+    def refresh_student_list(self):
+        
+        self.student_list.delete(*self.student_list.get_children())
+
+        
+        if not self.grade_manager.student_grades:
+            self.update_class_stats()
+            return
+
+        averages = self.grade_manager.calculate_averages()
+
+        for name, avg in averages.items():
+            display_avg = f"{avg:.2f}" if isinstance(avg, (int, float)) else "No grades"
+            self.student_list.insert('', 'end', text=name, values=(display_avg,))
+
+        self.update_class_stats()
+    def update_class_stats(self):
+       
+        stats = self.grade_manager.get_class_stats()
+
+        if stats:
+            for stat, value in stats.items():
+                getattr(self, f"{stat}_var").set(f"{value:.2f}")
+        else:
+            for stat in ['highest', 'lowest', 'average']:
+                getattr(self, f"{stat}_var").set("No data")
+    def on_student_select(self, event):
+        
+        selection = self.student_list.selection()
+        if not selection:
+            return
+
+        student_name = self.student_list.item(selection[0], 'text')
+        student_data = self.grade_manager.get_student(student_name)
+
+        self.name_var.set(student_name)
+        self.current_student = student_name
+        self.subjects_table.delete(*self.subjects_table.get_children())
+        for subject, grade in student_data:
+            self.subjects_table.insert('', 'end', text=subject,
+                                       values=(f"{grade:.2f}",))
+
+    def add_new_student(self):
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Add New Student")
+        dialog.geometry("400x250")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text="Student Name:").pack(pady=5)
+        name_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=name_var).pack(pady=5)
+
+        ttk.Label(dialog, text="Initial Subjects (optional):").pack(pady=5)
+        ttk.Label(dialog, text="Format: subject:grade, subject:grade").pack()
+        ttk.Label(dialog, text="Example: Math:90, Science:85").pack()
+        subs_var = tk.StringVar()
+        ttk.Entry(dialog, textvariable=subs_var).pack(pady=5)
+
+        def save_student():
+            name = name_var.get().strip()
+            if not name:
+                messagebox.showerror("Error", "Name cannot be empty!")
+                return
+
+            subjects = []
+            subs_input = subs_var.get().strip()
+            if subs_input:
+                try:
+                    for pair in subs_input.split(','):
+                        pair = pair.strip()
+                        if not pair:
+                            continue
+                        if ':' not in pair:
+                            messagebox.showerror("Error", f"Missing colon in: {pair}")
+                            return
+                        sub, grade = pair.split(':', 1)
+                        sub = sub.strip()
+                        grade = grade.strip()
+                        if not sub:
+                            messagebox.showerror("Error", "Subject name cannot be empty")
+                            return
+                        subjects.append((sub, float(grade)))
+                except ValueError:
+                    messagebox.showerror("Error", "Invalid grade format! Grades must be numbers")
+                    return
+
+            success, msg = self.grade_manager.add_student(name, subjects)
+            if success:
+                messagebox.showinfo("Success", msg)
+                self.refresh_student_list()
+                dialog.destroy()
+            else:
+                messagebox.showerror("Error", msg)
+
+        ttk.Button(dialog, text="Save", command=save_student).pack(pady=10)
+        ttk.Button(dialog, text="Cancel", command=dialog.destroy).pack(pady=5)
+
+        def save_student():
+            name = name_var.get().strip()
+            if not name:
+                messagebox.showerror("Error", "Name cannot be empty!")
+                return
+
+            subjects = []
+            subs_input = subs_var.get().strip()
+            if subs_input:
+                try:
+                    for pair in subs_input.split(','):
+                        sub, grade = pair.split(':')
+                        subjects.append((sub.strip(), float(grade.strip())))
+                except:
+                    messagebox.showerror("Error", "Invalid subjects format! Use 'subject:grade, subject:grade'")
+                    return
+
+            success, msg = self.grade_manager.add_student(name, subjects)
+            if success:
+                messagebox.showinfo("Success", msg)
+                self.refresh_student_list()
+                dialog.destroy()
+            else:
+                messagebox.showerror("Error", msg)
+
+        ttk.Button(dialog, text="Save", command=save_student).pack(pady=10)
+
+    def search_student(self):
+        
+        query = self.search_var.get().lower()
+        if not query:
+            self.refresh_student_list()
+            return
+
+        for child in self.student_list.get_children():
+            name = self.student_list.item(child, 'text').lower()
+            if query in name:
+                self.student_list.selection_set(child)
+                self.student_list.focus(child)
+                self.on_student_select(None)
+                break
+
+    def delete_current_student(self):
+        
+        if not hasattr(self, 'current_student'):
+            messagebox.showerror("Error", "No student selected!")
+            return
+
+        if messagebox.askyesno("Confirm", f"Delete {self.current_student}?"):
+            success, msg = self.grade_manager.delete_student(self.current_student)
+            if success:
+                messagebox.showinfo("Success", msg)
+                self.refresh_student_list()
+                self.name_var.set("")
+                self.subjects_table.delete(*self.subjects_table.get_children())
+                delattr(self, 'current_student')
+            else:
+                messagebox.showerror("Error", msg)
+
+    def toggle_edit(self):
+       
+        if not hasattr(self, 'current_student'):
+            return
+
+        if self.name_var.cget('state') == 'readonly':
+            self.name_var.config(state='normal')
+            self.edit_btn.config(text="Save")
+        else:
+            new_name = self.name_var.get().strip()
+            if not new_name:
+                messagebox.showerror("Error", "Name cannot be empty!")
+                return
+
+            if new_name != self.current_student:
+                if new_name in self.grade_manager.student_grades:
+                    messagebox.showerror("Error", "Student name already exists!")
+                    return
+
+               
+                self.grade_manager.student_grades[new_name] = self.grade_manager.student_grades.pop(
+                    self.current_student)
+                self.grade_manager.save_data()
+                self.current_student = new_name
+                self.refresh_student_list()
+
+            self.name_var.config(state='readonly')
+            self.edit_btn.config(text="Edit")
+
+    def add_subject(self):
+       
+        if not hasattr(self, 'current_student'):
+            messagebox.showerror("Error", "No student selected!")
+            return
+
+        subject = self.new_subject_var.get().strip()
+        if not subject:
+            messagebox.showerror("Error", "Subject cannot be empty!")
+            return
+
+        try:
+            grade = float(self.new_grade_var.get())
+            if grade < 0 or grade > 100:
+                raise ValueError
+        except:
+            messagebox.showerror("Error", "Grade must be a number between 0 and 100!")
+            return
+
+        self.grade_manager.student_grades[self.current_student].append((subject, grade))
+        self.grade_manager.save_data()
+        self.subjects_table.insert('', 'end', text=subject, values=(f"{grade:.2f}",))
+        self.refresh_student_list()
+        self.new_subject_var.set("")
+        self.new_grade_var.set("")
+
+    def export_data(self):
+        """Export student data to a file"""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")]
+        )
+
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, 'w') as file:
+                file.write("Student,Subject,Grade\n")
+                for name, subjects in self.grade_manager.student_grades.items():
+                    for subject, grade in subjects:
+                        file.write(f"{name},{subject},{grade}\n")
+            messagebox.showinfo("Success", f"Data exported to {file_path}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export: {str(e)}")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = GradeManagerApp(root)
+    root.mainloop()
